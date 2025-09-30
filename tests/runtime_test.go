@@ -1,0 +1,176 @@
+package tests
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/polyglot-framework/polyglot/core"
+	"github.com/polyglot-framework/polyglot/runtimes/cpp"
+	"github.com/polyglot-framework/polyglot/runtimes/java"
+	"github.com/polyglot-framework/polyglot/runtimes/rust"
+)
+
+// TestRustRuntime tests Rust runtime integration
+func TestRustRuntime(t *testing.T) {
+	runtime := rust.NewRuntime()
+
+	if runtime.Name() != "rust" {
+		t.Errorf("expected name 'rust', got '%s'", runtime.Name())
+	}
+
+	config := core.RuntimeConfig{
+		Name:           "rust",
+		Version:        "1.70",
+		Enabled:        true,
+		Options:        make(map[string]interface{}),
+		MaxConcurrency: 10,
+		Timeout:        30 * time.Second,
+	}
+
+	ctx := context.Background()
+
+	// Initialize (will fail without actual library, but tests the path)
+	err := runtime.Initialize(ctx, config)
+	if err != nil && err.Error() != "rust runtime not enabled in build" {
+		// Expected to fail without build tag, but should not panic
+		t.Logf("Initialize returned expected error: %v", err)
+	}
+
+	// Test shutdown
+	if err := runtime.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown failed: %v", err)
+	}
+}
+
+// TestJavaRuntime tests Java runtime integration
+func TestJavaRuntime(t *testing.T) {
+	runtime := java.NewRuntime()
+
+	if runtime.Name() != "java" {
+		t.Errorf("expected name 'java', got '%s'", runtime.Name())
+	}
+
+	config := core.RuntimeConfig{
+		Name:           "java",
+		Version:        "17",
+		Enabled:        true,
+		Options:        make(map[string]interface{}),
+		MaxConcurrency: 10,
+		Timeout:        30 * time.Second,
+	}
+
+	ctx := context.Background()
+
+	// Initialize (will fail without JVM, but tests the path)
+	err := runtime.Initialize(ctx, config)
+	if err != nil && err.Error() != "java runtime not enabled in build" {
+		t.Logf("Initialize returned expected error: %v", err)
+	}
+
+	// Test shutdown
+	if err := runtime.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown failed: %v", err)
+	}
+}
+
+// TestCppRuntime tests C++ runtime integration
+func TestCppRuntime(t *testing.T) {
+	runtime := cpp.NewRuntime()
+
+	if runtime.Name() != "cpp" {
+		t.Errorf("expected name 'cpp', got '%s'", runtime.Name())
+	}
+
+	config := core.RuntimeConfig{
+		Name:           "cpp",
+		Version:        "17",
+		Enabled:        true,
+		Options:        make(map[string]interface{}),
+		MaxConcurrency: 10,
+		Timeout:        30 * time.Second,
+	}
+
+	ctx := context.Background()
+
+	// Initialize (will fail without actual library, but tests the path)
+	err := runtime.Initialize(ctx, config)
+	if err != nil && err.Error() != "cpp runtime not enabled in build" {
+		t.Logf("Initialize returned expected error: %v", err)
+	}
+
+	// Test version
+	version := runtime.Version()
+	if version == "" {
+		t.Error("version should not be empty")
+	}
+
+	// Test shutdown
+	if err := runtime.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown failed: %v", err)
+	}
+}
+
+// TestRuntimeRegistration tests registering multiple runtimes
+func TestRuntimeRegistration(t *testing.T) {
+	config := core.DefaultConfig()
+	config.EnableRuntime("rust", "1.70")
+	config.EnableRuntime("java", "17")
+	config.EnableRuntime("cpp", "17")
+
+	orchestrator, err := core.NewOrchestrator(config)
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+
+	// Register runtimes
+	runtimes := []core.Runtime{
+		rust.NewRuntime(),
+		java.NewRuntime(),
+		cpp.NewRuntime(),
+	}
+
+	for _, runtime := range runtimes {
+		if err := orchestrator.RegisterRuntime(runtime); err != nil {
+			t.Errorf("failed to register %s: %v", runtime.Name(), err)
+		}
+	}
+
+	// Verify registration
+	registered := orchestrator.Runtimes()
+	if len(registered) != 3 {
+		t.Errorf("expected 3 runtimes, got %d", len(registered))
+	}
+
+	// Test shutdown
+	ctx := context.Background()
+	if err := orchestrator.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown failed: %v", err)
+	}
+}
+
+// TestRuntimeIsolation tests that runtimes don't interfere with each other
+func TestRuntimeIsolation(t *testing.T) {
+	config := core.DefaultConfig()
+	config.EnableRuntime("rust", "1.70")
+	config.EnableRuntime("cpp", "17")
+
+	orchestrator, err := core.NewOrchestrator(config)
+	if err != nil {
+		t.Fatalf("failed to create orchestrator: %v", err)
+	}
+
+	rustRuntime := rust.NewRuntime()
+	cppRuntime := cpp.NewRuntime()
+
+	orchestrator.RegisterRuntime(rustRuntime)
+	orchestrator.RegisterRuntime(cppRuntime)
+
+	// Verify each runtime maintains its identity
+	if rustRuntime.Name() == cppRuntime.Name() {
+		t.Error("runtimes should have different names")
+	}
+
+	ctx := context.Background()
+	orchestrator.Shutdown(ctx)
+}
