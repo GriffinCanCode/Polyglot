@@ -1,9 +1,15 @@
 package webview
 
-import "github.com/webview/webview"
+// Hint represents window sizing hints
+type Hint int
 
-// Hint type alias
-type Hint = webview.Hint
+// Hint constants for window sizing
+const (
+	HintNone  Hint = 0
+	HintMin   Hint = 1
+	HintMax   Hint = 2
+	HintFixed Hint = 3
+)
 
 // WebviewBackend defines the interface for webview implementations
 type WebviewBackend interface {
@@ -35,31 +41,8 @@ type WebviewBackend interface {
 	Destroy()
 }
 
-// Hint constants for window sizing
-const (
-	HintNone  = webview.HintNone
-	HintMin   = webview.HintMin
-	HintMax   = webview.HintMax
-	HintFixed = webview.HintFixed
-)
-
-// NewBackend creates a native webview instance
-var NewBackend func(debug bool) WebviewBackend = func(debug bool) WebviewBackend {
-	return webview.New(debug)
-}
-
-// stubBackend is a no-op implementation for testing
-type stubBackend struct{}
-
-func (s *stubBackend) SetTitle(title string)                  {}
-func (s *stubBackend) SetSize(w, h int, hint Hint)            {}
-func (s *stubBackend) Navigate(url string)                    {}
-func (s *stubBackend) Run()                                   {}
-func (s *stubBackend) Eval(script string)                     {}
-func (s *stubBackend) Bind(name string, fn interface{}) error { return nil }
-func (s *stubBackend) Init(script string)                     {}
-func (s *stubBackend) Terminate()                             {}
-func (s *stubBackend) Destroy()                               {}
+// NewBackend creates a webview instance (implementation set by build tags)
+var NewBackend func(debug bool) WebviewBackend
 
 // ConfigureBackend allows setting a custom webview backend
 func ConfigureBackend(factory func(debug bool) WebviewBackend) {

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/griffincancode/polyglot.js/build-system/builder"
+	builder "github.com/griffincancode/polyglot.js/build-system"
 )
 
 // TestBindingGeneratorBasic tests basic binding generation

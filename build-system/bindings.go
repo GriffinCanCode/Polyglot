@@ -135,7 +135,10 @@ func (g *BindingGenerator) generateForLanguage(lang string, types []TypeDef) err
 
 // generateTypeScript creates TypeScript definitions
 func (g *BindingGenerator) generateTypeScript(types []TypeDef) error {
-	tmpl := template.Must(template.New("typescript").Parse(tsTemplate))
+	funcMap := template.FuncMap{
+		"mapGoTypeToTS": mapGoTypeToTS,
+	}
+	tmpl := template.Must(template.New("typescript").Funcs(funcMap).Parse(tsTemplate))
 
 	outputPath := filepath.Join(g.outputDir, "bindings.d.ts")
 	file, err := os.Create(outputPath)
@@ -149,7 +152,10 @@ func (g *BindingGenerator) generateTypeScript(types []TypeDef) error {
 
 // generatePython creates Python type stubs
 func (g *BindingGenerator) generatePython(types []TypeDef) error {
-	tmpl := template.Must(template.New("python").Parse(pyTemplate))
+	funcMap := template.FuncMap{
+		"mapGoTypeToPy": mapGoTypeToPy,
+	}
+	tmpl := template.Must(template.New("python").Funcs(funcMap).Parse(pyTemplate))
 
 	outputPath := filepath.Join(g.outputDir, "bindings.pyi")
 	file, err := os.Create(outputPath)
@@ -163,7 +169,10 @@ func (g *BindingGenerator) generatePython(types []TypeDef) error {
 
 // generateRust creates Rust bindings
 func (g *BindingGenerator) generateRust(types []TypeDef) error {
-	tmpl := template.Must(template.New("rust").Parse(rustTemplate))
+	funcMap := template.FuncMap{
+		"mapGoTypeToRust": mapGoTypeToRust,
+	}
+	tmpl := template.Must(template.New("rust").Funcs(funcMap).Parse(rustTemplate))
 
 	outputPath := filepath.Join(g.outputDir, "bindings.rs")
 	file, err := os.Create(outputPath)
@@ -201,6 +210,54 @@ func mapGoTypeToTS(goType string) string {
 			return mapGoTypeToTS(goType[2:]) + "[]"
 		}
 		return "any"
+	}
+}
+
+// mapGoTypeToPy maps Go types to Python
+func mapGoTypeToPy(goType string) string {
+	switch goType {
+	case "string":
+		return "str"
+	case "int", "int32", "int64":
+		return "int"
+	case "float32", "float64":
+		return "float"
+	case "bool":
+		return "bool"
+	default:
+		if strings.HasPrefix(goType, "[]") {
+			return "List[" + mapGoTypeToPy(goType[2:]) + "]"
+		}
+		if strings.HasPrefix(goType, "map[") {
+			return "Dict[str, Any]"
+		}
+		return "Any"
+	}
+}
+
+// mapGoTypeToRust maps Go types to Rust
+func mapGoTypeToRust(goType string) string {
+	switch goType {
+	case "string":
+		return "String"
+	case "int", "int32":
+		return "i32"
+	case "int64":
+		return "i64"
+	case "float32":
+		return "f32"
+	case "float64":
+		return "f64"
+	case "bool":
+		return "bool"
+	default:
+		if strings.HasPrefix(goType, "[]") {
+			return "Vec<" + mapGoTypeToRust(goType[2:]) + ">"
+		}
+		if strings.HasPrefix(goType, "map[") {
+			return "HashMap<String, serde_json::Value>"
+		}
+		return "serde_json::Value"
 	}
 }
 
