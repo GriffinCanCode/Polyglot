@@ -1,0 +1,43 @@
+{
+  "name": "polyglot",
+  "version": "0.1.0",
+  "description": "A radical rethinking of desktop application development that treats multilingual programming as a first-class citizen",
+  "main": "index.js",
+  "scripts": {
+    "build": "polyglot build",
+    "dev": "polyglot dev",
+    "test": "polyglot test",
+    "package": "polyglot package"
+  },
+  "keywords": [
+    "desktop",
+    "multilingual",
+    "polyglot",
+    "bun",
+    "python",
+    "rust",
+    "go",
+    "java",
+    "typescript",
+    "native",
+    "webview"
+  ],
+  "author": "Polyglot Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/polyglot-framework/polyglot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/polyglot-framework/polyglot/issues"
+  },
+  "homepage": "https://polyglot.dev"
+}
