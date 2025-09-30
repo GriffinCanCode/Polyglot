@@ -38,7 +38,7 @@ func TestAllRuntimes(t *testing.T) {
 		{"cpp", cpp.NewRuntime(), true, "2 + 2"},
 		{"ruby", ruby.NewRuntime(), true, "2 + 2"},
 		{"lua", lua.NewRuntime(), true, "return 2 + 2"},
-		{"zig", zig.NewRuntime(), false, ""},
+		{"zig", zig.NewRuntime(), true, "2 + 2"},
 		{"wasm", wasm.NewRuntime(), false, ""},
 		{"rust", rust.NewRuntime(), true, "println!(\"4\")"},
 	}
