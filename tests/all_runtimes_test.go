@@ -40,7 +40,7 @@ func TestAllRuntimes(t *testing.T) {
 		{"lua", lua.NewRuntime(), true, "return 2 + 2"},
 		{"zig", zig.NewRuntime(), false, ""},
 		{"wasm", wasm.NewRuntime(), false, ""},
-		{"rust", rust.NewRuntime(), false, ""},
+		{"rust", rust.NewRuntime(), true, "println!(\"4\")"},
 	}
 
 	for _, rt := range runtimes {
