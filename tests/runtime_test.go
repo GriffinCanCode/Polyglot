@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/polyglot-framework/polyglot/core"
-	"github.com/polyglot-framework/polyglot/runtimes/cpp"
-	"github.com/polyglot-framework/polyglot/runtimes/java"
-	"github.com/polyglot-framework/polyglot/runtimes/rust"
+	"github.com/griffincancode/polyglot.js/core"
+	"github.com/griffincancode/polyglot.js/runtimes/cpp"
+	"github.com/griffincancode/polyglot.js/runtimes/java"
+	"github.com/griffincancode/polyglot.js/runtimes/rust"
 )
 
 // TestRustRuntime tests Rust runtime integration

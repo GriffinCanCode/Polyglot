@@ -49,10 +49,10 @@ import (
 	"log"
 	"time"
 	
-	"github.com/polyglot-framework/polyglot/core"
-	"github.com/polyglot-framework/polyglot/runtimes/python"
-	"github.com/polyglot-framework/polyglot/runtimes/javascript"
-	"github.com/polyglot-framework/polyglot/webview"
+	"github.com/griffincancode/polyglot.js/core"
+	"github.com/griffincancode/polyglot.js/runtimes/python"
+	"github.com/griffincancode/polyglot.js/runtimes/javascript"
+	"github.com/griffincancode/polyglot.js/webview"
 )
 
 func main() {

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // Runtime implements Java runtime integration via JNI

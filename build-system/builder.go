@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // Builder handles application compilation

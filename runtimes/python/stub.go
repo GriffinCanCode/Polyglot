@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // Runtime implements a stub Python runtime when Python is not enabled

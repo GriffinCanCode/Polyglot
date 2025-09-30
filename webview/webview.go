@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // Webview manages the native webview window

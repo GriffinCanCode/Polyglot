@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // Runtime is a stub when Rust is not enabled

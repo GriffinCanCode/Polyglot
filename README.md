@@ -62,7 +62,7 @@ polyglot/
 ### Installation
 
 ```bash
-go install github.com/polyglot-framework/polyglot/cli@latest
+go install github.com/griffincancode/polyglot.js/cli@latest
 ```
 
 ### Create a New Project
@@ -108,8 +108,8 @@ config.EnableRuntime("javascript", "latest")
 ### Build from Source
 
 ```bash
-git clone https://github.com/polyglot-framework/polyglot.git
-cd polyglot
+git clone https://github.com/griffincancode/polyglot.js.git
+cd polyglot.js
 go build -o polyglot ./cli
 ```
 

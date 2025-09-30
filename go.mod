@@ -1,4 +1,4 @@
-module github.com/polyglot-framework/polyglot
+module github.com/griffincancode/polyglot.js
 
 go 1.21
 

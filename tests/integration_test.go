@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // MockRuntime implements a mock runtime for testing

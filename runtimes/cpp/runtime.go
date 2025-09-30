@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // Runtime implements C++ runtime integration via CGO

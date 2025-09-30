@@ -1,7 +1,7 @@
 package builder
 
 import (
-	"github.com/polyglot-framework/polyglot/core"
+	"github.com/griffincancode/polyglot.js/core"
 )
 
 // GenerateTags generates build tags based on enabled runtimes
