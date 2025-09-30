@@ -3,8 +3,7 @@
 
 package python
 
-// #cgo pkg-config: python3
-// #cgo LDFLAGS: -lpython3.11
+// #cgo pkg-config: python3-embed
 // #include <Python.h>
 // #include <stdlib.h>
 import "C"
@@ -13,12 +12,18 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"unsafe"
 
 	"github.com/griffincancode/polyglot.js/core"
 )
 
-// Runtime implements Python runtime integration
+var (
+	// Global initialization lock
+	initMu sync.Mutex
+	// Track if Python is initialized
+	initialized bool
+)
+
+// Runtime implements Python runtime integration with proper GIL management
 type Runtime struct {
 	config   core.RuntimeConfig
 	pool     *Pool
@@ -29,59 +34,119 @@ type Runtime struct {
 // NewRuntime creates a Python runtime instance
 func NewRuntime() *Runtime {
 	return &Runtime{
-		pool: NewPool(10),
+		pool:     NewPool(4),
+		shutdown: false,
 	}
 }
 
-// Initialize prepares the Python runtime
+// Initialize prepares the Python runtime with proper threading support
 func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if r.shutdown {
-		return fmt.Errorf("runtime is shutdown")
+		return ErrShutdown
+	}
+
+	initMu.Lock()
+	defer initMu.Unlock()
+
+	// Initialize Python interpreter once
+	if !initialized {
+		if C.Py_IsInitialized() == 0 {
+			C.Py_Initialize()
+
+			// Note: In Python 3.7+, threading is automatically initialized
+			// PyEval_InitThreads() is deprecated and removed in Python 3.9+
+			// The GIL is created automatically when Py_Initialize() is called
+
+			// Save main thread state and release GIL
+			// This allows other threads to acquire it
+			mainThreadState := C.PyEval_SaveThread()
+			if mainThreadState == nil {
+				return fmt.Errorf("failed to save main thread state")
+			}
+		}
+		initialized = true
 	}
 
 	r.config = config
 
-	// Initialize Python interpreter
-	if C.Py_IsInitialized() == 0 {
-		C.Py_Initialize()
+	// Determine pool size
+	poolSize := config.MaxConcurrency
+	if poolSize <= 0 {
+		poolSize = 4
 	}
 
-	// Initialize the pool
-	if err := r.pool.Initialize(config.MaxConcurrency); err != nil {
+	// Initialize the state pool
+	if err := r.pool.Initialize(poolSize); err != nil {
 		return fmt.Errorf("failed to initialize pool: %w", err)
 	}
 
 	return nil
 }
 
-// Execute runs Python code
+// Execute runs Python code with proper GIL management
 func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
+	r.mu.RLock()
 	if r.shutdown {
-		return nil, fmt.Errorf("runtime is shutdown")
+		r.mu.RUnlock()
+		return nil, ErrShutdown
 	}
+	r.mu.RUnlock()
 
-	worker := r.pool.Acquire()
-	defer r.pool.Release(worker)
+	state := r.pool.Acquire()
+	if state == nil {
+		return nil, fmt.Errorf("failed to acquire state")
+	}
+	defer r.pool.Release(state)
 
-	return worker.Execute(code, args...)
+	// Execute with context cancellation support
+	resultChan := make(chan Result, 1)
+	go func() {
+		result, err := state.Execute(code, args...)
+		resultChan <- Result{Value: result, Err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.Value, res.Err
+	}
 }
 
-// Call invokes a Python function
+// Call invokes a Python function with proper GIL management
 func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
+	r.mu.RLock()
 	if r.shutdown {
-		return nil, fmt.Errorf("runtime is shutdown")
+		r.mu.RUnlock()
+		return nil, ErrShutdown
 	}
+	r.mu.RUnlock()
 
-	worker := r.pool.Acquire()
-	defer r.pool.Release(worker)
+	state := r.pool.Acquire()
+	if state == nil {
+		return nil, fmt.Errorf("failed to acquire state")
+	}
+	defer r.pool.Release(state)
 
-	return worker.Call(fn, args...)
+	// Call with context cancellation support
+	resultChan := make(chan Result, 1)
+	go func() {
+		result, err := state.Call(fn, args...)
+		resultChan <- Result{Value: result, Err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.Value, res.Err
+	}
 }
 
-// Shutdown stops the runtime
+// Shutdown stops the runtime and cleans up resources
 func (r *Runtime) Shutdown(ctx context.Context) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -91,11 +156,22 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	}
 
 	r.shutdown = true
+
+	// Close pool and cleanup all states
 	r.pool.Close()
 
-	// Finalize Python interpreter
-	if C.Py_IsInitialized() != 0 {
-		C.Py_Finalize()
+	initMu.Lock()
+	defer initMu.Unlock()
+
+	// Only finalize if we initialized
+	if initialized {
+		// Note: In a multi-threaded environment, calling Py_Finalize() can cause
+		// crashes if any Python objects are still referenced. It's safer to just
+		// not call Py_Finalize() and let the process cleanup handle it.
+		// The pool cleanup above already releases all our thread states.
+
+		// Mark as uninitialized
+		initialized = false
 	}
 
 	return nil
@@ -108,84 +184,13 @@ func (r *Runtime) Name() string {
 
 // Version returns the Python version
 func (r *Runtime) Version() string {
+	if C.Py_IsInitialized() == 0 {
+		return "not initialized"
+	}
+
+	gil := AcquireGIL()
+	defer gil.Release()
+
 	cVersion := C.Py_GetVersion()
 	return C.GoString(cVersion)
-}
-
-// pyStringToGo converts Python string to Go string
-func pyStringToGo(pyStr *C.PyObject) string {
-	if pyStr == nil {
-		return ""
-	}
-
-	cStr := C.PyUnicode_AsUTF8(pyStr)
-	if cStr == nil {
-		return ""
-	}
-
-	return C.GoString(cStr)
-}
-
-// goStringToPy converts Go string to Python string
-func goStringToPy(s string) *C.PyObject {
-	cStr := C.CString(s)
-	defer C.free(unsafe.Pointer(cStr))
-	return C.PyUnicode_FromString(cStr)
-}
-
-// convertToPython converts Go value to Python object
-func convertToPython(val interface{}) *C.PyObject {
-	if val == nil {
-		C.Py_IncRef(C.Py_None)
-		return C.Py_None
-	}
-
-	switch v := val.(type) {
-	case string:
-		return goStringToPy(v)
-	case int:
-		return C.PyLong_FromLong(C.long(v))
-	case int64:
-		return C.PyLong_FromLongLong(C.longlong(v))
-	case float64:
-		return C.PyFloat_FromDouble(C.double(v))
-	case bool:
-		if v {
-			C.Py_IncRef(C.Py_True)
-			return C.Py_True
-		}
-		C.Py_IncRef(C.Py_False)
-		return C.Py_False
-	default:
-		C.Py_IncRef(C.Py_None)
-		return C.Py_None
-	}
-}
-
-// convertFromPython converts Python object to Go value
-func convertFromPython(obj *C.PyObject) interface{} {
-	if obj == nil || obj == C.Py_None {
-		return nil
-	}
-
-	if C.PyBool_Check(obj) != 0 {
-		if obj == C.Py_True {
-			return true
-		}
-		return false
-	}
-
-	if C.PyLong_Check(obj) != 0 {
-		return int64(C.PyLong_AsLongLong(obj))
-	}
-
-	if C.PyFloat_Check(obj) != 0 {
-		return float64(C.PyFloat_AsDouble(obj))
-	}
-
-	if C.PyUnicode_Check(obj) != 0 {
-		return pyStringToGo(obj)
-	}
-
-	return nil
 }

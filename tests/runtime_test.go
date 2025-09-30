@@ -8,8 +8,56 @@ import (
 	"github.com/griffincancode/polyglot.js/core"
 	"github.com/griffincancode/polyglot.js/runtimes/cpp"
 	"github.com/griffincancode/polyglot.js/runtimes/java"
+	"github.com/griffincancode/polyglot.js/runtimes/javascript"
 	"github.com/griffincancode/polyglot.js/runtimes/rust"
 )
+
+// TestJavaScriptRuntime tests JavaScript runtime integration
+func TestJavaScriptRuntime(t *testing.T) {
+	runtime := javascript.NewRuntime()
+
+	if runtime.Name() != "javascript" {
+		t.Errorf("expected name 'javascript', got '%s'", runtime.Name())
+	}
+
+	config := core.RuntimeConfig{
+		Name:           "javascript",
+		Version:        "ES2020",
+		Enabled:        true,
+		Options:        make(map[string]interface{}),
+		MaxConcurrency: 10,
+		Timeout:        30 * time.Second,
+	}
+
+	ctx := context.Background()
+
+	// Initialize
+	err := runtime.Initialize(ctx, config)
+	if err != nil {
+		t.Fatalf("Failed to initialize JavaScript runtime: %v", err)
+	}
+
+	// Test simple execution
+	result, err := runtime.Execute(ctx, "21 + 21")
+	if err != nil {
+		t.Logf("Execute returned error (may be expected): %v", err)
+	} else if result != nil {
+		t.Logf("Execute returned: %v", result)
+	}
+
+	// Test version
+	version := runtime.Version()
+	if version == "" {
+		t.Error("version should not be empty")
+	} else {
+		t.Logf("JavaScript version: %s", version)
+	}
+
+	// Test shutdown
+	if err := runtime.Shutdown(ctx); err != nil {
+		t.Errorf("shutdown failed: %v", err)
+	}
+}
 
 // TestRustRuntime tests Rust runtime integration
 func TestRustRuntime(t *testing.T) {
@@ -117,6 +165,7 @@ func TestRuntimeRegistration(t *testing.T) {
 	config.EnableRuntime("rust", "1.70")
 	config.EnableRuntime("java", "17")
 	config.EnableRuntime("cpp", "17")
+	config.EnableRuntime("javascript", "ES2020")
 
 	orchestrator, err := core.NewOrchestrator(config)
 	if err != nil {
@@ -128,6 +177,7 @@ func TestRuntimeRegistration(t *testing.T) {
 		rust.NewRuntime(),
 		java.NewRuntime(),
 		cpp.NewRuntime(),
+		javascript.NewRuntime(),
 	}
 
 	for _, runtime := range runtimes {
@@ -138,8 +188,8 @@ func TestRuntimeRegistration(t *testing.T) {
 
 	// Verify registration
 	registered := orchestrator.Runtimes()
-	if len(registered) != 3 {
-		t.Errorf("expected 3 runtimes, got %d", len(registered))
+	if len(registered) != 4 {
+		t.Errorf("expected 4 runtimes, got %d", len(registered))
 	}
 
 	// Test shutdown

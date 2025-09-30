@@ -5,15 +5,17 @@ package python
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/griffincancode/polyglot.js/core"
 )
 
+var (
+	errNotEnabled = errors.New("python runtime not enabled (build with -tags runtime_python)")
+)
+
 // Runtime implements a stub Python runtime when Python is not enabled
-type Runtime struct {
-	config core.RuntimeConfig
-}
+type Runtime struct{}
 
 // NewRuntime creates a stub Python runtime
 func NewRuntime() *Runtime {
@@ -22,17 +24,18 @@ func NewRuntime() *Runtime {
 
 // Initialize returns an error indicating Python is not enabled
 func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) error {
-	return fmt.Errorf("Python runtime not enabled (build with -tags runtime_python)")
+	_ = config // Explicitly mark as used
+	return errNotEnabled
 }
 
 // Execute returns an error
 func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
-	return nil, fmt.Errorf("Python runtime not enabled")
+	return nil, errNotEnabled
 }
 
 // Call returns an error
 func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
-	return nil, fmt.Errorf("Python runtime not enabled")
+	return nil, errNotEnabled
 }
 
 // Shutdown does nothing

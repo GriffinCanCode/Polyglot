@@ -17,11 +17,18 @@ polyglot/
 │   ├── rust/       # Rust integration with shared library loading (Phase 2)
 │   ├── java/       # Java integration with JNI bindings (Phase 2)
 │   ├── cpp/        # C++ integration with CGO bindings (Phase 2)
-│   ├── zig/        # Zig integration (Phase 3)
-│   └── php/        # PHP integration (Phase 3)
+│   ├── php/        # PHP integration with embedded interpreter (Phase 3)
+│   ├── ruby/       # Ruby integration with CGO bindings (Phase 3)
+│   ├── lua/        # Lua integration with state management (Phase 3)
+│   ├── zig/        # Zig integration with C ABI (Phase 3)
+│   └── wasm/       # WebAssembly runtime (Phase 3)
 ├── webview/        # Native webview integration
 ├── build-system/   # Build tooling, selective compilation, and binding generation
 ├── cli/            # CLI tool for project management
+├── marketplace/    # Package registry and template management (Phase 4)
+├── cloud/          # Cloud build infrastructure (Phase 4)
+├── signing/        # Code signing for all platforms (Phase 4)
+├── updates/        # Differential update system (Phase 4)
 ├── tests/          # Comprehensive test suite
 ├── types/          # Shared type definitions
 ├── security/       # Security and sandboxing
@@ -51,11 +58,28 @@ polyglot/
 - **Profiler**: Cross-runtime performance tracking with detailed metrics
 - **Hot Module Replacement**: File watching with runtime-specific reload handlers
 
-### Phase 3 (Planned)
+### Phase 3 (✅ Complete)
 
-- PHP, Ruby, Lua, and Zig support
-- WASM fallback for unsupported platforms
-- Cloud build and distribution service
+- **PHP Integration**: Embedded PHP interpreter with SAPI
+- **Ruby Integration**: CGO bindings to libruby with worker pools
+- **Lua Integration**: Lightweight Lua state management
+- **Zig Integration**: C ABI compatibility with dynamic loading
+- **WASM Runtime**: WebAssembly bytecode execution engine
+- **Security Sandboxing**: Platform-specific enforcers (Landlock, App Sandbox, AppContainer)
+
+### Phase 4 (✅ Complete)
+
+- **Marketplace**: Package registry with search, caching, and validation
+- **Cloud Services**: Remote build infrastructure with authentication
+- **Cross-Platform Compilation**: Parallel builds for multiple platforms
+- **Code Signing**: Platform-specific signing (macOS, Windows, Linux)
+- **Update System**: Differential patching with rollback support
+
+### Phase 5 (Planned)
+
+- Mobile runtime exploration (iOS/Android)
+- Embedded systems support
+- Plugin architecture for custom runtimes
 
 ## Quick Start
 
@@ -122,8 +146,15 @@ go test ./...
 ### Build Examples
 
 ```bash
-cd examples/hello-world
-polyglot build
+cd examples/01-hello-world
+go build -o dist/hello-world ./src/backend
+./dist/hello-world
+```
+
+Or run tests:
+```bash
+cd examples/01-hello-world
+go test -v
 ```
 
 ## Design Principles

@@ -59,6 +59,10 @@ func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{})
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
 
+	if r.contexts == nil {
+		return nil, fmt.Errorf("JavaScript runtime not initialized")
+	}
+
 	jsCtx := r.contexts.Acquire()
 	defer r.contexts.Release(jsCtx)
 
@@ -78,6 +82,10 @@ func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (int
 
 	if r.shutdown {
 		return nil, fmt.Errorf("runtime is shutdown")
+	}
+
+	if r.contexts == nil {
+		return nil, fmt.Errorf("JavaScript runtime not initialized")
 	}
 
 	jsCtx := r.contexts.Acquire()
