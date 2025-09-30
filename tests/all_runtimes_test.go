@@ -36,7 +36,7 @@ func TestAllRuntimes(t *testing.T) {
 		{"php", php.NewRuntime(), true, "echo 2 + 2;"},
 		{"java", java.NewRuntime(), true, "2 + 2"},
 		{"cpp", cpp.NewRuntime(), true, "2 + 2"},
-		{"ruby", ruby.NewRuntime(), false, "2 + 2"},
+		{"ruby", ruby.NewRuntime(), true, "2 + 2"},
 		{"lua", lua.NewRuntime(), true, "return 2 + 2"},
 		{"zig", zig.NewRuntime(), false, ""},
 		{"wasm", wasm.NewRuntime(), false, ""},

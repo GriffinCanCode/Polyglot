@@ -61,26 +61,56 @@ func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) err
 
 // Execute runs Ruby code
 func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
+	r.mu.RLock()
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
 	worker := r.pool.Acquire()
 	defer r.pool.Release(worker)
 
-	return worker.Execute(code, args...)
+	// Execute with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Execute(code, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Call invokes a Ruby method
 func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
+	r.mu.RLock()
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
 	worker := r.pool.Acquire()
 	defer r.pool.Release(worker)
 
-	return worker.Call(fn, args...)
+	// Call with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Call(fn, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Shutdown stops the runtime
@@ -93,12 +123,20 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	}
 
 	r.shutdown = true
-	r.pool.Close()
+
+	if r.pool != nil {
+		r.pool.Close()
+	}
 
 	// Finalize Ruby interpreter
 	C.ruby_finalize()
 
 	return nil
+}
+
+type result struct {
+	value interface{}
+	err   error
 }
 
 // Name returns the runtime identifier

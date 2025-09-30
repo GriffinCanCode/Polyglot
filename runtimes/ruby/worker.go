@@ -81,9 +81,79 @@ func (w *Worker) Call(fn string, args ...interface{}) (interface{}, error) {
 		return nil, fmt.Errorf("worker is shutdown")
 	}
 
-	// Build function call string
-	code := fmt.Sprintf("%s()", fn)
-	return w.Execute(code, args...)
+	// Build the method call with proper argument formatting
+	var code string
+	if len(args) == 0 {
+		code = fmt.Sprintf("%s()", fn)
+	} else {
+		// Convert arguments to Ruby literal syntax
+		argStrings := make([]string, len(args))
+		for i, arg := range args {
+			argStrings[i] = formatRubyArgument(arg)
+		}
+		argList := ""
+		for i, argStr := range argStrings {
+			if i > 0 {
+				argList += ", "
+			}
+			argList += argStr
+		}
+		code = fmt.Sprintf("%s(%s)", fn, argList)
+	}
+
+	cCode := C.CString(code)
+	defer C.free(unsafe.Pointer(cCode))
+
+	var state C.int
+	result := C.rb_eval_string_protect(cCode, &state)
+
+	if state != 0 {
+		// Exception occurred
+		errVal := C.rb_errinfo()
+		errMsg := C.rb_obj_as_string(errVal)
+		return nil, fmt.Errorf("ruby call error: %s", rubyStringToGo(errMsg))
+	}
+
+	return convertFromRuby(result), nil
+}
+
+// formatRubyArgument converts a Go value to Ruby literal syntax
+func formatRubyArgument(arg interface{}) string {
+	if arg == nil {
+		return "nil"
+	}
+
+	switch v := arg.(type) {
+	case string:
+		// Escape quotes in strings
+		escaped := ""
+		for _, ch := range v {
+			if ch == '"' {
+				escaped += "\\\""
+			} else if ch == '\\' {
+				escaped += "\\\\"
+			} else {
+				escaped += string(ch)
+			}
+		}
+		return fmt.Sprintf("\"%s\"", escaped)
+	case int:
+		return fmt.Sprintf("%d", v)
+	case int64:
+		return fmt.Sprintf("%d", v)
+	case float64:
+		return fmt.Sprintf("%f", v)
+	case float32:
+		return fmt.Sprintf("%f", v)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	default:
+		// For other types, attempt string conversion
+		return fmt.Sprintf("\"%v\"", v)
+	}
 }
 
 // Shutdown stops the worker

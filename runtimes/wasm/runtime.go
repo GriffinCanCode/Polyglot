@@ -14,7 +14,7 @@ import (
 // Runtime implements WebAssembly runtime integration
 type Runtime struct {
 	config   core.RuntimeConfig
-	engine   *Engine
+	pool     *Pool
 	mu       sync.RWMutex
 	shutdown bool
 }
@@ -22,7 +22,7 @@ type Runtime struct {
 // NewRuntime creates a WASM runtime instance
 func NewRuntime() *Runtime {
 	return &Runtime{
-		engine: NewEngine(),
+		pool: NewPool(10),
 	}
 }
 
@@ -37,9 +37,9 @@ func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) err
 
 	r.config = config
 
-	// Initialize the WASM engine
-	if err := r.engine.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize engine: %w", err)
+	// Initialize the pool
+	if err := r.pool.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize pool: %w", err)
 	}
 
 	return nil
@@ -48,32 +48,55 @@ func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) err
 // Execute runs WASM bytecode
 func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
-	// Load WASM module from code (assumed to be path or bytecode)
-	module, err := r.engine.LoadModule([]byte(code))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load module: %w", err)
+	worker := r.pool.Acquire()
+	defer r.pool.Release(worker)
+
+	// Execute with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Execute(code, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
 	}
-
-	// Execute the module's main or start function
-	return r.engine.Execute(module, args...)
 }
 
 // Call invokes a WASM exported function
 func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
-	return r.engine.CallFunction(fn, args...)
+	worker := r.pool.Acquire()
+	defer r.pool.Release(worker)
+
+	// Call with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Call(fn, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Shutdown stops the runtime
@@ -86,7 +109,12 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	}
 
 	r.shutdown = true
-	return r.engine.Shutdown()
+
+	if r.pool != nil {
+		r.pool.Close()
+	}
+
+	return nil
 }
 
 // Name returns the runtime identifier
@@ -101,13 +129,20 @@ func (r *Runtime) Version() string {
 
 // LoadModule loads a WASM module from bytes
 func (r *Runtime) LoadModule(ctx context.Context, bytecode []byte) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
+	r.mu.RLock()
 	if r.shutdown {
+		r.mu.RUnlock()
 		return fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
-	_, err := r.engine.LoadModule(bytecode)
-	return err
+	worker := r.pool.Acquire()
+	defer r.pool.Release(worker)
+
+	return worker.LoadModule(bytecode)
+}
+
+type result struct {
+	value interface{}
+	err   error
 }
