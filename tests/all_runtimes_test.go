@@ -35,12 +35,12 @@ func TestAllRuntimes(t *testing.T) {
 		{"go", goruntime.NewRuntime(), true, "2 + 2"},
 		{"php", php.NewRuntime(), true, "echo 2 + 2;"},
 		{"java", java.NewRuntime(), true, "2 + 2"},
+		{"cpp", cpp.NewRuntime(), true, "2 + 2"},
 		{"ruby", ruby.NewRuntime(), false, "2 + 2"},
-		{"lua", lua.NewRuntime(), false, "return 2 + 2"},
+		{"lua", lua.NewRuntime(), true, "return 2 + 2"},
 		{"zig", zig.NewRuntime(), false, ""},
 		{"wasm", wasm.NewRuntime(), false, ""},
 		{"rust", rust.NewRuntime(), false, ""},
-		{"cpp", cpp.NewRuntime(), false, ""},
 	}
 
 	for _, rt := range runtimes {

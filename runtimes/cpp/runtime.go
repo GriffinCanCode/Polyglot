@@ -3,33 +3,29 @@
 
 package cpp
 
-/*
-#cgo CXXFLAGS: -std=c++17
-#cgo LDFLAGS: -lstdc++
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/griffincancode/polyglot.js/core"
 )
 
-// Runtime implements C++ runtime integration via CGO
+// Runtime implements C++ runtime integration using CLI execution
 type Runtime struct {
 	config   core.RuntimeConfig
-	loader   *Loader
+	pool     *Pool
 	mu       sync.RWMutex
 	shutdown bool
+	cppPath  string
 }
 
 // NewRuntime creates a C++ runtime instance
 func NewRuntime() *Runtime {
 	return &Runtime{
-		loader: NewLoader(),
+		cppPath: "g++",
 	}
 }
 
@@ -42,48 +38,89 @@ func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) err
 		return fmt.Errorf("runtime is shutdown")
 	}
 
-	r.config = config
-
-	// Load C++ shared library if specified
-	if libPath, ok := config.Options["library_path"].(string); ok {
-		if err := r.loader.Load(libPath); err != nil {
-			return fmt.Errorf("failed to load library: %w", err)
-		}
+	// Check if g++ is available
+	if err := r.checkCppAvailable(); err != nil {
+		return fmt.Errorf("C++ compiler not available: %w", err)
 	}
 
-	// Call initialization function if specified
-	if initFn, ok := config.Options["init_function"].(string); ok {
-		if _, err := r.Call(ctx, initFn); err != nil {
-			return fmt.Errorf("initialization failed: %w", err)
-		}
+	r.config = config
+
+	// Determine pool size
+	poolSize := config.MaxConcurrency
+	if poolSize <= 0 {
+		poolSize = 4
+	}
+
+	// Initialize the pool
+	r.pool = NewPool(poolSize)
+	if err := r.pool.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize pool: %w", err)
 	}
 
 	return nil
 }
 
-// Execute runs C++ code (via pre-compiled functions)
-func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if r.shutdown {
-		return nil, fmt.Errorf("runtime is shutdown")
+// checkCppAvailable verifies g++ is installed and accessible
+func (r *Runtime) checkCppAvailable() error {
+	cmd := exec.Command(r.cppPath, "--version")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("g++ binary not found or not executable: %w", err)
 	}
-
-	// For C++, "code" is typically a function name
-	return r.Call(ctx, code, args...)
+	return nil
 }
 
-// Call invokes a C++ function by symbol name
-func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
+// Execute runs C++ code
+func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
-	return r.loader.Invoke(fn, args...)
+	worker := r.pool.Acquire()
+	defer r.pool.Release(worker)
+
+	// Execute with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Execute(code, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
+}
+
+// Call invokes a C++ function
+func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
+	r.mu.RLock()
+	if r.shutdown {
+		r.mu.RUnlock()
+		return nil, fmt.Errorf("runtime is shutdown")
+	}
+	r.mu.RUnlock()
+
+	worker := r.pool.Acquire()
+	defer r.pool.Release(worker)
+
+	// Call with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Call(fn, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Shutdown stops the runtime
@@ -97,12 +134,11 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 
 	r.shutdown = true
 
-	// Call cleanup function if specified
-	if cleanupFn, ok := r.config.Options["cleanup_function"].(string); ok {
-		r.loader.Invoke(cleanupFn)
+	if r.pool != nil {
+		r.pool.Close()
 	}
 
-	return r.loader.Unload()
+	return nil
 }
 
 // Name returns the runtime identifier
@@ -110,13 +146,34 @@ func (r *Runtime) Name() string {
 	return "cpp"
 }
 
-// Version returns the C++ standard version
+// Version returns the C++ compiler version
 func (r *Runtime) Version() string {
-	// Try to call version function if available
-	if result, err := r.loader.Invoke("cpp_version"); err == nil {
-		if version, ok := result.(string); ok {
-			return version
-		}
+	cmd := exec.Command(r.cppPath, "--version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "unknown"
 	}
+
+	// g++ --version outputs to stdout
+	versionStr := string(output)
+	lines := strings.Split(versionStr, "\n")
+	if len(lines) > 0 {
+		// Extract version from first line
+		firstLine := lines[0]
+		if strings.Contains(firstLine, "g++") {
+			// Extract version number
+			parts := strings.Fields(firstLine)
+			if len(parts) >= 3 {
+				return parts[len(parts)-1]
+			}
+		}
+		return strings.TrimSpace(firstLine)
+	}
+
 	return "c++17"
+}
+
+type result struct {
+	value interface{}
+	err   error
 }

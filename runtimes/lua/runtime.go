@@ -4,11 +4,9 @@
 package lua
 
 /*
-#cgo pkg-config: lua
-#cgo LDFLAGS: -llua -lm -ldl
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
+#cgo CFLAGS: -I/opt/homebrew/include/lua
+#cgo LDFLAGS: -L/opt/homebrew/lib -llua -lm
+#include "luawrap.h"
 #include <stdlib.h>
 */
 import "C"
@@ -58,26 +56,56 @@ func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) err
 
 // Execute runs Lua code
 func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
+	r.mu.RLock()
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
 	worker := r.pool.Acquire()
 	defer r.pool.Release(worker)
 
-	return worker.Execute(code, args...)
+	// Execute with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Execute(code, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Call invokes a Lua function
 func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
+	r.mu.RLock()
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
 	worker := r.pool.Acquire()
 	defer r.pool.Release(worker)
 
-	return worker.Call(fn, args...)
+	// Call with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Call(fn, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Shutdown stops the runtime
@@ -90,7 +118,10 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	}
 
 	r.shutdown = true
-	r.pool.Close()
+
+	if r.pool != nil {
+		r.pool.Close()
+	}
 
 	return nil
 }
@@ -102,7 +133,12 @@ func (r *Runtime) Name() string {
 
 // Version returns the Lua version
 func (r *Runtime) Version() string {
-	return C.GoString(C.LUA_VERSION)
+	return "Lua 5.4"
+}
+
+type result struct {
+	value interface{}
+	err   error
 }
 
 // pushToLua pushes a Go value onto the Lua stack
@@ -144,9 +180,9 @@ func popFromLua(L *C.lua_State, idx C.int) interface{} {
 	case C.LUA_TBOOLEAN:
 		return C.lua_toboolean(L, idx) != 0
 	case C.LUA_TNUMBER:
-		return float64(C.lua_tonumber(L, idx))
+		return float64(C.luawrap_tonumber(L, idx))
 	case C.LUA_TSTRING:
-		return C.GoString(C.lua_tostring(L, idx))
+		return C.GoString(C.luawrap_tostring(L, idx))
 	default:
 		return nil
 	}

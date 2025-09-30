@@ -4,9 +4,9 @@
 package lua
 
 /*
-#include <lua.h>
-#include <lualib.h>
-#include <lauxlib.h>
+#cgo CFLAGS: -I/opt/homebrew/include/lua
+#cgo LDFLAGS: -L/opt/homebrew/lib -llua -lm
+#include "luawrap.h"
 #include <stdlib.h>
 */
 import "C"
@@ -67,20 +67,20 @@ func (w *Worker) Execute(code string, args ...interface{}) (interface{}, error) 
 
 	// Load and execute the code
 	if C.luaL_loadstring(w.state, cCode) != 0 {
-		err := C.GoString(C.lua_tostring(w.state, -1))
-		C.lua_pop(w.state, 1)
+		err := C.GoString(C.luawrap_tostring(w.state, -1))
+		C.luawrap_pop(w.state, 1)
 		return nil, fmt.Errorf("lua load error: %s", err)
 	}
 
-	if C.lua_pcall(w.state, 0, 1, 0) != 0 {
-		err := C.GoString(C.lua_tostring(w.state, -1))
-		C.lua_pop(w.state, 1)
+	if C.luawrap_pcall(w.state, 0, 1, 0) != 0 {
+		err := C.GoString(C.luawrap_tostring(w.state, -1))
+		C.luawrap_pop(w.state, 1)
 		return nil, fmt.Errorf("lua execution error: %s", err)
 	}
 
 	// Get result from stack
 	result := popFromLua(w.state, -1)
-	C.lua_pop(w.state, 1)
+	C.luawrap_pop(w.state, 1)
 
 	return result, nil
 }
@@ -100,8 +100,8 @@ func (w *Worker) Call(fn string, args ...interface{}) (interface{}, error) {
 	// Get the function
 	C.lua_getglobal(w.state, cFn)
 
-	if C.lua_isfunction(w.state, -1) == 0 {
-		C.lua_pop(w.state, 1)
+	if C.luawrap_isfunction(w.state, -1) == 0 {
+		C.luawrap_pop(w.state, 1)
 		return nil, fmt.Errorf("function %s not found", fn)
 	}
 
@@ -112,15 +112,15 @@ func (w *Worker) Call(fn string, args ...interface{}) (interface{}, error) {
 
 	// Call the function
 	nArgs := C.int(len(args))
-	if C.lua_pcall(w.state, nArgs, 1, 0) != 0 {
-		err := C.GoString(C.lua_tostring(w.state, -1))
-		C.lua_pop(w.state, 1)
+	if C.luawrap_pcall(w.state, nArgs, 1, 0) != 0 {
+		err := C.GoString(C.luawrap_tostring(w.state, -1))
+		C.luawrap_pop(w.state, 1)
 		return nil, fmt.Errorf("lua call error: %s", err)
 	}
 
 	// Get result
 	result := popFromLua(w.state, -1)
-	C.lua_pop(w.state, 1)
+	C.luawrap_pop(w.state, 1)
 
 	return result, nil
 }

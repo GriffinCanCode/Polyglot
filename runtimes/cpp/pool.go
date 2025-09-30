@@ -1,21 +1,14 @@
-//go:build runtime_lua
-// +build runtime_lua
+//go:build runtime_cpp
+// +build runtime_cpp
 
-package lua
-
-/*
-#cgo CFLAGS: -I/opt/homebrew/include/lua
-#cgo LDFLAGS: -L/opt/homebrew/lib -llua -lm
-#include "luawrap.h"
-*/
-import "C"
+package cpp
 
 import (
 	"fmt"
 	"sync"
 )
 
-// Pool manages Lua state workers
+// Pool manages C++ execution workers
 type Pool struct {
 	workers chan *Worker
 	size    int
@@ -26,13 +19,12 @@ type Pool struct {
 // NewPool creates a worker pool
 func NewPool(size int) *Pool {
 	return &Pool{
-		workers: make(chan *Worker, size),
-		size:    size,
+		size: size,
 	}
 }
 
 // Initialize creates workers
-func (p *Pool) Initialize(size int) error {
+func (p *Pool) Initialize() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -40,10 +32,9 @@ func (p *Pool) Initialize(size int) error {
 		return fmt.Errorf("pool is closed")
 	}
 
-	p.size = size
-	p.workers = make(chan *Worker, size)
+	p.workers = make(chan *Worker, p.size)
 
-	for i := 0; i < size; i++ {
+	for i := 0; i < p.size; i++ {
 		worker := NewWorker(i)
 		if err := worker.Initialize(); err != nil {
 			return fmt.Errorf("failed to initialize worker %d: %w", i, err)
