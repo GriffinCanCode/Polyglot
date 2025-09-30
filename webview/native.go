@@ -1,71 +1,58 @@
-//go:build webview_enabled
-// +build webview_enabled
+//go:build !stub
+// +build !stub
 
 package webview
 
-// NOTE: To use native webview, install the webview library:
-// go get github.com/webview/webview
-//
-// Then uncomment the import and implementation below.
-// For now, this file serves as a template for future native webview integration.
+import webview "github.com/webview/webview_go"
 
-/*
-import "github.com/webview/webview"
-
-// Native webview backend using external library
-type nativeBackend struct {
+// NativeBackend implements WebviewBackend using the webview/webview library
+type NativeBackend struct {
 	wv webview.WebView
 }
 
 // NewNativeBackend creates a native webview instance
 func NewNativeBackend(debug bool) WebviewBackend {
-	return &nativeBackend{
+	return &NativeBackend{
 		wv: webview.New(debug),
 	}
 }
 
-func (n *nativeBackend) SetTitle(title string) {
+func (n *NativeBackend) SetTitle(title string) {
 	n.wv.SetTitle(title)
 }
 
-func (n *nativeBackend) SetSize(w, h int, hint Hint) {
+func (n *NativeBackend) SetSize(w, h int, hint Hint) {
 	n.wv.SetSize(w, h, webview.Hint(hint))
 }
 
-func (n *nativeBackend) Navigate(url string) {
+func (n *NativeBackend) Navigate(url string) {
 	n.wv.Navigate(url)
 }
 
-func (n *nativeBackend) Run() {
+func (n *NativeBackend) Run() {
 	n.wv.Run()
 }
 
-func (n *nativeBackend) Eval(script string) {
+func (n *NativeBackend) Eval(script string) {
 	n.wv.Eval(script)
 }
 
-func (n *nativeBackend) Bind(name string, fn interface{}) error {
+func (n *NativeBackend) Bind(name string, fn interface{}) error {
 	return n.wv.Bind(name, fn)
 }
 
-func (n *nativeBackend) Init(script string) {
+func (n *NativeBackend) Init(script string) {
 	n.wv.Init(script)
 }
 
-func (n *nativeBackend) Terminate() {
+func (n *NativeBackend) Terminate() {
 	n.wv.Terminate()
 }
 
-func (n *nativeBackend) Destroy() {
+func (n *NativeBackend) Destroy() {
 	n.wv.Destroy()
 }
 
 func init() {
 	NewBackend = NewNativeBackend
-}
-*/
-
-// Placeholder implementation
-func init() {
-	NewBackend = NewStubBackend
 }

@@ -53,6 +53,8 @@ func GetError() string {
 
 	var ptype, pvalue, ptraceback *C.PyObject
 	C.PyErr_Fetch(&ptype, &pvalue, &ptraceback)
+	C.PyErr_NormalizeException(&ptype, &pvalue, &ptraceback)
+
 	defer func() {
 		if ptype != nil {
 			C.Py_DecRef(ptype)
@@ -69,18 +71,113 @@ func GetError() string {
 		return "unknown Python error"
 	}
 
+	// Build comprehensive error message with type and value
+	errorMsg := ""
+
+	// Get exception type name
+	if ptype != nil {
+		cTypeName := C.CString("__name__")
+		defer C.free(unsafe.Pointer(cTypeName))
+		typeName := C.PyObject_GetAttrString(ptype, cTypeName)
+		if typeName != nil {
+			defer C.Py_DecRef(typeName)
+			typeStr := C.PyUnicode_AsUTF8(typeName)
+			if typeStr != nil {
+				errorMsg = C.GoString(typeStr) + ": "
+			}
+		}
+	}
+
+	// Get exception message
 	pyStr := C.PyObject_Str(pvalue)
 	if pyStr == nil {
-		return "error converting Python error to string"
+		return errorMsg + "error converting Python error to string"
 	}
 	defer C.Py_DecRef(pyStr)
 
 	cStr := C.PyUnicode_AsUTF8(pyStr)
 	if cStr == nil {
-		return "error getting UTF-8 from Python string"
+		return errorMsg + "error getting UTF-8 from Python string"
 	}
 
-	return C.GoString(cStr)
+	errorMsg += C.GoString(cStr)
+
+	// Add traceback if available
+	if ptraceback != nil {
+		tb := getTraceback(ptype, pvalue, ptraceback)
+		if tb != "" {
+			errorMsg += "\n\nTraceback:\n" + tb
+		}
+	}
+
+	return errorMsg
+}
+
+// getTraceback extracts formatted traceback from Python exception
+func getTraceback(ptype, pvalue, ptraceback *C.PyObject) string {
+	if ptraceback == nil {
+		return ""
+	}
+
+	// Import traceback module
+	cTraceback := C.CString("traceback")
+	defer C.free(unsafe.Pointer(cTraceback))
+	tbModule := C.PyImport_ImportModule(cTraceback)
+	if tbModule == nil {
+		return ""
+	}
+	defer C.Py_DecRef(tbModule)
+
+	// Get format_exception function
+	cFormatException := C.CString("format_exception")
+	defer C.free(unsafe.Pointer(cFormatException))
+	formatFunc := C.PyObject_GetAttrString(tbModule, cFormatException)
+	if formatFunc == nil {
+		return ""
+	}
+	defer C.Py_DecRef(formatFunc)
+
+	// Create argument tuple
+	args := C.PyTuple_New(3)
+	defer C.Py_DecRef(args)
+
+	C.Py_IncRef(ptype)
+	C.Py_IncRef(pvalue)
+	C.Py_IncRef(ptraceback)
+
+	C.PyTuple_SetItem(args, 0, ptype)
+	C.PyTuple_SetItem(args, 1, pvalue)
+	C.PyTuple_SetItem(args, 2, ptraceback)
+
+	// Call format_exception
+	result := C.PyObject_CallObject(formatFunc, args)
+	if result == nil {
+		return ""
+	}
+	defer C.Py_DecRef(result)
+
+	// Join the list of strings
+	if C.py_is_list(result) == 0 {
+		return ""
+	}
+
+	size := C.PyList_Size(result)
+	if size <= 0 {
+		return ""
+	}
+
+	traceback := ""
+	for i := C.Py_ssize_t(0); i < size; i++ {
+		item := C.PyList_GetItem(result, i)
+		if item != nil && C.py_is_unicode(item) != 0 {
+			str := C.PyUnicode_AsUTF8(item)
+			if str != nil {
+				traceback += C.GoString(str)
+			}
+		}
+	}
+
+	return traceback
 }
 
 // ClearError clears any Python error state

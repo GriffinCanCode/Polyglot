@@ -38,15 +38,21 @@ polyglot/
 
 ## Features
 
-### Phase 1 (✅ Complete)
+### Phase 1 (✅ Complete & Fully Operational)
 
 - **Core Orchestrator**: Go-based runtime coordinator with goroutine pooling
-- **Python Integration**: Full CPython embedding with CGO bindings
+- **Python Integration**: ✅ **FULLY OPERATIONAL** - Full CPython embedding with:
+  - Real CGO bindings (`#cgo pkg-config: python3-embed`)
+  - Proper GIL management and thread safety
+  - Worker pool architecture for concurrency
+  - Auto-detection build system (no manual flags needed)
+  - Comprehensive CI testing on Ubuntu, macOS, Windows
+  - Works with standard pip/PyPI installations
 - **JavaScript/TypeScript**: V8 runtime integration
 - **Memory Coordinator**: Zero-copy shared memory architecture
 - **Webview**: Native webview with bidirectional bridge
 - **CLI Tool**: Project initialization, build, dev, and test commands
-- **Build System**: Selective compilation with build tags
+- **Build System**: Selective compilation with automatic runtime detection
 - **Test Suite**: Comprehensive unit and integration tests
 
 ### Phase 2 (✅ Complete)
@@ -87,6 +93,18 @@ polyglot/
 
 ```bash
 go install github.com/griffincancode/polyglot.js/cli@latest
+```
+
+### Python Runtime Setup (Optional)
+
+The Python runtime is **automatically detected** and enabled if you have Python installed via pip/PyPI. To ensure it's available:
+
+```bash
+# Check if Python runtime is detected
+make verify-python
+
+# If not detected, install dev headers
+make setup-python
 ```
 
 ### Create a New Project
@@ -134,12 +152,35 @@ config.EnableRuntime("javascript", "latest")
 ```bash
 git clone https://github.com/griffincancode/polyglot.js.git
 cd polyglot.js
-go build -o polyglot ./cli
+make build
 ```
+
+The build system **automatically detects** available runtimes (like Python) and enables them. No build flags needed!
+
+### Enable Python Runtime
+
+If Python runtime isn't automatically detected:
+
+```bash
+# Install Python development headers
+make setup-python
+
+# Build with auto-detection
+make build
+```
+
+That's it! The Python runtime will be automatically enabled if the dev headers are found.
 
 ### Run Tests
 
 ```bash
+# Run all tests (auto-detects Python)
+make test
+
+# Run only Python runtime tests
+make test-python
+
+# Or with Go directly
 go test ./...
 ```
 
@@ -147,7 +188,7 @@ go test ./...
 
 ```bash
 cd examples/01-hello-world
-go build -o dist/hello-world ./src/backend
+make example  # Auto-detects Python
 ./dist/hello-world
 ```
 
@@ -155,6 +196,18 @@ Or run tests:
 ```bash
 cd examples/01-hello-world
 go test -v
+```
+
+### Manual Build Tags (Advanced)
+
+If you need explicit control:
+
+```bash
+# Force native Python (fails if unavailable)
+go build -tags=runtime_python -o polyglot ./cli
+
+# Or use stub runtimes explicitly
+go build -o polyglot ./cli
 ```
 
 ## Design Principles

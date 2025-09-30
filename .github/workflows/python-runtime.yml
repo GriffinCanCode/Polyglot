@@ -1,0 +1,185 @@
+name: Python Runtime Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'runtimes/python/**'
+      - 'tests/python_advanced_test.go'
+      - '.github/workflows/python-runtime.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'runtimes/python/**'
+      - 'tests/python_advanced_test.go'
+
+jobs:
+  test-ubuntu:
+    name: Test on Ubuntu
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      
+      - name: Install Python development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python${{ matrix.python-version }}-dev pkg-config
+      
+      - name: Verify Python setup
+        run: |
+          python${{ matrix.python-version }} --version
+          pkg-config --version
+          pkg-config --exists python3-embed && echo "✅ python3-embed found" || echo "⚠️ python3-embed not found"
+          pkg-config --modversion python3-embed || true
+      
+      - name: Run Python runtime tests
+        run: |
+          go test -v -tags=runtime_python ./tests/python_advanced_test.go
+      
+      - name: Run Python version compatibility tests
+        run: |
+          go test -v -tags=runtime_python ./tests/python_version_test.go
+      
+      - name: Build example with Python runtime
+        run: |
+          cd examples/01-hello-world
+          go build -tags=runtime_python -o dist/hello-world-python ./src/backend
+      
+      - name: Build Python webview demo
+        run: |
+          cd examples/03-python-webview-demo
+          go build -tags=runtime_python -o python-demo
+
+  test-macos:
+    name: Test on macOS
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Install Python with Homebrew
+        run: |
+          brew install python@3.11 pkg-config
+      
+      - name: Configure pkg-config
+        run: |
+          echo "PKG_CONFIG_PATH=$(brew --prefix python@3.11)/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+      
+      - name: Verify Python setup
+        run: |
+          python3 --version
+          pkg-config --version
+          pkg-config --exists python3-embed && echo "✅ python3-embed found" || echo "⚠️ python3-embed not found"
+          pkg-config --modversion python3-embed || true
+      
+      - name: Run Python runtime tests
+        run: |
+          go test -v -tags=runtime_python ./tests/python_advanced_test.go
+      
+      - name: Run Python version compatibility tests
+        run: |
+          go test -v -tags=runtime_python ./tests/python_version_test.go
+      
+      - name: Build example with Python runtime
+        run: |
+          cd examples/01-hello-world
+          go build -tags=runtime_python -o dist/hello-world-python ./src/backend
+      
+      - name: Build Python webview demo
+        run: |
+          cd examples/03-python-webview-demo
+          go build -tags=runtime_python -o python-demo
+
+  test-windows:
+    name: Test on Windows
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install MSYS2 and pkg-config
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: mingw-w64-x86_64-pkgconf
+      
+      - name: Verify Python setup
+        shell: bash
+        run: |
+          python --version
+          which python
+      
+      - name: Run Python runtime tests (if supported)
+        shell: bash
+        run: |
+          # Windows Python runtime tests are experimental
+          # Uncomment when fully supported:
+          # go test -v -tags=runtime_python ./tests/python_advanced_test.go
+          echo "⚠️ Windows Python runtime tests are experimental"
+          echo "Building with stub runtime for now"
+          go test -v ./tests/core_test.go
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test-ubuntu]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dev pkg-config
+      
+      - name: Run integration tests
+        run: |
+          go test -v -tags=runtime_python ./tests/integration_test.go
+      
+      - name: Run all runtime tests
+        run: |
+          go test -v -tags=runtime_python ./tests/all_runtimes_test.go

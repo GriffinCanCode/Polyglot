@@ -3,6 +3,7 @@ package webview
 import (
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"sync"
 
 	"github.com/griffincancode/polyglot.js/core"
@@ -27,6 +28,9 @@ func New(config core.WebviewConfig, bridge core.Bridge) *Webview {
 
 // Initialize creates the webview window
 func (w *Webview) Initialize() error {
+	// Lock to OS thread - required for WebKit on macOS and GTK on Linux
+	runtime.LockOSThread()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -130,7 +134,7 @@ func (w *Webview) bindBridge() {
 			}
 		}
 
-		// Call bridge function
+		// Call bridge function (pass nil context for now)
 		result, err := w.bridge.Call(nil, name, args...)
 		if err != nil {
 			return "", err

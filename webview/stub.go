@@ -1,5 +1,5 @@
-//go:build !webview_enabled
-// +build !webview_enabled
+//go:build stub
+// +build stub
 
 package webview
 
