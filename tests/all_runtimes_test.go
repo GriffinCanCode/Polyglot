@@ -33,13 +33,13 @@ func TestAllRuntimes(t *testing.T) {
 		{"python", python.NewRuntime(), true, "2 + 2"},
 		{"javascript", javascript.NewRuntime(), true, "2 + 2"},
 		{"go", goruntime.NewRuntime(), true, "2 + 2"},
-		{"php", php.NewRuntime(), false, "<?php echo 2 + 2; ?>"},
+		{"php", php.NewRuntime(), true, "echo 2 + 2;"},
+		{"java", java.NewRuntime(), true, "2 + 2"},
 		{"ruby", ruby.NewRuntime(), false, "2 + 2"},
 		{"lua", lua.NewRuntime(), false, "return 2 + 2"},
 		{"zig", zig.NewRuntime(), false, ""},
 		{"wasm", wasm.NewRuntime(), false, ""},
 		{"rust", rust.NewRuntime(), false, ""},
-		{"java", java.NewRuntime(), false, ""},
 		{"cpp", cpp.NewRuntime(), false, ""},
 	}
 

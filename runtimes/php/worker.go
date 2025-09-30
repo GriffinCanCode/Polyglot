@@ -3,16 +3,12 @@
 
 package php
 
-/*
-#include <sapi/embed/php_embed.h>
-#include <stdlib.h>
-*/
-import "C"
-
 import (
+	"bytes"
 	"fmt"
+	"os/exec"
+	"strings"
 	"sync"
-	"unsafe"
 )
 
 // Worker represents a PHP execution context
@@ -20,12 +16,14 @@ type Worker struct {
 	id       int
 	mu       sync.Mutex
 	shutdown bool
+	phpPath  string
 }
 
 // NewWorker creates a PHP worker
 func NewWorker(id int) *Worker {
 	return &Worker{
-		id: id,
+		id:      id,
+		phpPath: "php",
 	}
 }
 
@@ -38,7 +36,12 @@ func (w *Worker) Initialize() error {
 		return fmt.Errorf("worker is shutdown")
 	}
 
-	// Worker-specific initialization if needed
+	// Verify PHP is available
+	cmd := exec.Command(w.phpPath, "--version")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("php not available: %w", err)
+	}
+
 	return nil
 }
 
@@ -51,16 +54,26 @@ func (w *Worker) Execute(code string, args ...interface{}) (interface{}, error) 
 		return nil, fmt.Errorf("worker is shutdown")
 	}
 
-	cCode := C.CString(code)
-	defer C.free(unsafe.Pointer(cCode))
+	// Prepare the code
+	code = prepareCode(code)
 
-	// Execute PHP code
-	result := C.zend_eval_string(cCode, nil, (*C.char)(unsafe.Pointer(C.CString("polyglot"))))
-	if result == nil {
-		return nil, fmt.Errorf("execution failed")
+	// Execute PHP code using -r flag
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(w.phpPath, "-r", code)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		errMsg := stderr.String()
+		if errMsg != "" {
+			return nil, fmt.Errorf("execution failed: %s", errMsg)
+		}
+		return nil, fmt.Errorf("execution failed: %w", err)
 	}
 
-	return nil, nil
+	// Extract result from output
+	output := stdout.String()
+	return extractResult(output), nil
 }
 
 // Call invokes a PHP function
@@ -73,8 +86,15 @@ func (w *Worker) Call(fn string, args ...interface{}) (interface{}, error) {
 	}
 
 	// Build function call string
-	code := fmt.Sprintf("%s()", fn)
-	return w.Execute(code, args...)
+	var argStrs []string
+	for _, arg := range args {
+		argStrs = append(argStrs, fmt.Sprintf("%v", arg))
+	}
+
+	code := fmt.Sprintf("echo %s(%s);", fn, strings.Join(argStrs, ", "))
+
+	// Execute the function call
+	return w.Execute(code)
 }
 
 // Shutdown stops the worker

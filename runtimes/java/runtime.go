@@ -3,37 +3,29 @@
 
 package java
 
-/*
-#cgo CFLAGS: -I${JAVA_HOME}/include -I${JAVA_HOME}/include/darwin -I${JAVA_HOME}/include/linux
-#cgo LDFLAGS: -L${JAVA_HOME}/lib/server -ljvm
-#include <jni.h>
-#include <stdlib.h>
-*/
-import "C"
-
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"strings"
 	"sync"
-	"unsafe"
 
 	"github.com/griffincancode/polyglot.js/core"
 )
 
-// Runtime implements Java runtime integration via JNI
+// Runtime implements Java runtime integration using CLI execution
 type Runtime struct {
 	config   core.RuntimeConfig
-	jvm      *C.JavaVM
-	env      *C.JNIEnv
-	pool     *EnvPool
+	pool     *Pool
 	mu       sync.RWMutex
 	shutdown bool
+	javaPath string
 }
 
 // NewRuntime creates a Java runtime instance
 func NewRuntime() *Runtime {
 	return &Runtime{
-		pool: NewEnvPool(10),
+		javaPath: "java",
 	}
 }
 
@@ -46,65 +38,89 @@ func (r *Runtime) Initialize(ctx context.Context, config core.RuntimeConfig) err
 		return fmt.Errorf("runtime is shutdown")
 	}
 
-	r.config = config
-
-	// Create JVM
-	var jvm *C.JavaVM
-	var env *C.JNIEnv
-	var args C.JavaVMInitArgs
-
-	args.version = C.JNI_VERSION_1_8
-	args.nOptions = 0
-	args.ignoreUnrecognized = C.JNI_TRUE
-
-	res := C.JNI_CreateJavaVM(&jvm, (*unsafe.Pointer)(unsafe.Pointer(&env)), unsafe.Pointer(&args))
-	if res != C.JNI_OK {
-		return fmt.Errorf("failed to create JVM: %d", res)
+	// Check if Java is available
+	if err := r.checkJavaAvailable(); err != nil {
+		return fmt.Errorf("Java not available: %w", err)
 	}
 
-	r.jvm = jvm
-	r.env = env
+	r.config = config
 
-	// Initialize environment pool
-	if err := r.pool.Initialize(jvm, config.MaxConcurrency); err != nil {
+	// Determine pool size
+	poolSize := config.MaxConcurrency
+	if poolSize <= 0 {
+		poolSize = 4
+	}
+
+	// Initialize the pool
+	r.pool = NewPool(poolSize)
+	if err := r.pool.Initialize(); err != nil {
 		return fmt.Errorf("failed to initialize pool: %w", err)
 	}
 
 	return nil
 }
 
+// checkJavaAvailable verifies Java is installed and accessible
+func (r *Runtime) checkJavaAvailable() error {
+	cmd := exec.Command(r.javaPath, "-version")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("java binary not found or not executable: %w", err)
+	}
+	return nil
+}
+
 // Execute runs Java code
 func (r *Runtime) Execute(ctx context.Context, code string, args ...interface{}) (interface{}, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
-	env := r.pool.Acquire()
-	defer r.pool.Release(env)
+	worker := r.pool.Acquire()
+	defer r.pool.Release(worker)
 
-	// Java code execution would typically involve compiling or loading classes
-	// This is a simplified implementation
-	return nil, fmt.Errorf("direct code execution not supported, use Call instead")
+	// Execute with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Execute(code, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Call invokes a Java method
 func (r *Runtime) Call(ctx context.Context, fn string, args ...interface{}) (interface{}, error) {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	if r.shutdown {
+		r.mu.RUnlock()
 		return nil, fmt.Errorf("runtime is shutdown")
 	}
+	r.mu.RUnlock()
 
-	env := r.pool.Acquire()
-	defer r.pool.Release(env)
+	worker := r.pool.Acquire()
+	defer r.pool.Release(worker)
 
-	// Parse function name as "ClassName.methodName"
-	// Actual implementation would handle class loading, method invocation
-	return r.invokeMethod(env, fn, args...)
+	// Call with context cancellation support
+	resultChan := make(chan result, 1)
+	go func() {
+		res, err := worker.Call(fn, args...)
+		resultChan <- result{value: res, err: err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-resultChan:
+		return res.value, res.err
+	}
 }
 
 // Shutdown stops the runtime
@@ -117,12 +133,9 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	}
 
 	r.shutdown = true
-	r.pool.Close()
 
-	if r.jvm != nil {
-		C.jvm_DestroyJavaVM(r.jvm)
-		r.jvm = nil
-		r.env = nil
+	if r.pool != nil {
+		r.pool.Close()
 	}
 
 	return nil
@@ -135,34 +148,35 @@ func (r *Runtime) Name() string {
 
 // Version returns the Java version
 func (r *Runtime) Version() string {
-	if r.env == nil {
+	cmd := exec.Command(r.javaPath, "-version")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
 		return "unknown"
 	}
 
-	version := C.jni_GetVersion(r.env)
-	return fmt.Sprintf("JNI %d", version)
+	// Java -version outputs to stderr typically
+	versionStr := string(output)
+	lines := strings.Split(versionStr, "\n")
+	if len(lines) > 0 {
+		// Extract version from first line
+		firstLine := lines[0]
+		if strings.Contains(firstLine, "version") {
+			// Extract version number
+			start := strings.Index(firstLine, "\"")
+			if start >= 0 {
+				end := strings.Index(firstLine[start+1:], "\"")
+				if end >= 0 {
+					return firstLine[start+1 : start+1+end]
+				}
+			}
+		}
+		return strings.TrimSpace(firstLine)
+	}
+
+	return "unknown"
 }
 
-// invokeMethod calls a Java method through JNI
-func (r *Runtime) invokeMethod(env *C.JNIEnv, method string, args ...interface{}) (interface{}, error) {
-	// Simplified implementation - full version would handle:
-	// - Class loading
-	// - Method signature resolution
-	// - Argument marshaling
-	// - Return value conversion
-	return nil, fmt.Errorf("method invocation not yet fully implemented")
-}
-
-// jvm_DestroyJavaVM wraps the JVM destruction
-//
-//export jvm_DestroyJavaVM
-func jvm_DestroyJavaVM(jvm *C.JavaVM) C.jint {
-	return (*jvm).DestroyJavaVM(jvm)
-}
-
-// jni_GetVersion gets the JNI version
-//
-//export jni_GetVersion
-func jni_GetVersion(env *C.JNIEnv) C.jint {
-	return (*env).GetVersion(env)
+type result struct {
+	value interface{}
+	err   error
 }
