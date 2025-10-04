@@ -1,3 +1,5 @@
+![Polyglot Framework](assets/polyglot-project.png)
+
 # Polyglot Framework
 
 > A radical rethinking of desktop application development that treats multilingual programming as a first-class citizen.
